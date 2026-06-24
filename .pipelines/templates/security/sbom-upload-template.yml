@@ -1,0 +1,116 @@
+parameters:
+  - name: jobName
+    type: string
+    default: 'sbomUpload'
+  - name: dependsOn
+    type: object
+    default: []
+  - name: displayName
+    type: string
+    default: 'SBOM Upload'
+  - name: dependencyTrackApiUrl
+    type: string
+  - name: dependencyTrackApiKey
+    type: string
+  - name: projectName
+    type: string
+  - name: projectVersion
+    type: string
+    default: '$(Build.BuildNumber)'
+  - name: parentName
+    type: string
+    default: ''
+  - name: sbomArtifactName
+    type: string
+    default: 'SBOM'
+  - name: sbomFilename
+    type: string
+    default: 'sbom.cyclonedx.json'
+  - name: latest
+    type: boolean
+    default: true
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: '${{ parameters.displayName }}'
+    dependsOn: ${{ parameters.dependsOn }}
+    pool:
+      vmImage: 'ubuntu-latest'
+    
+    steps:
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download SBOM Artifact'
+        inputs:
+          artifactName: '${{ parameters.sbomArtifactName }}'
+          targetPath: '$(Pipeline.Workspace)/sbom'
+
+      - task: Bash@3
+        displayName: 'Upload SBOM to Dependency-Track'
+        inputs:
+          targetType: 'inline'
+          script: |
+            SBOM_FILE="$(Pipeline.Workspace)/sbom/${{ parameters.sbomFilename }}"
+
+            if [ ! -f "$SBOM_FILE" ]; then
+              echo "##vso[task.logissue type=error]SBOM file not found: $SBOM_FILE"
+              exit 1
+            fi
+
+            # Base64 encode the SBOM file
+            SBOM_BASE64=$(base64 -w 0 "$SBOM_FILE")
+
+            PROJECT_NAME="${{ parameters.projectName }}"
+
+            echo "Uploading SBOM to Dependency-Track..."
+            echo "Project: $PROJECT_NAME"
+            echo "Version: ${{ parameters.projectVersion }}"
+
+            # Build the JSON payload
+            PARENT_NAME="${{ parameters.parentName }}"
+            LATEST=$(echo "${{ parameters.latest }}" | tr '[:upper:]' '[:lower:]')
+            if [ -n "$PARENT_NAME" ]; then
+              echo "Parent: $PARENT_NAME"
+              JSON_PAYLOAD="{
+                \"projectName\": \"$PROJECT_NAME\",
+                \"projectVersion\": \"${{ parameters.projectVersion }}\",
+                \"parentName\": \"$PARENT_NAME\",
+                \"autoCreate\": true,
+                \"isLatestProjectVersion\": $LATEST,
+                \"bom\": \"$SBOM_BASE64\"
+              }"
+            else
+              JSON_PAYLOAD="{
+                \"projectName\": \"$PROJECT_NAME\",
+                \"projectVersion\": \"${{ parameters.projectVersion }}\",
+                \"autoCreate\": true,
+                \"isLatestProjectVersion\": $LATEST,
+                \"bom\": \"$SBOM_BASE64\"
+              }"
+            fi
+
+            # Create a temporary file for the JSON payload
+            TEMP_PAYLOAD=$(mktemp)
+            trap "rm -f $TEMP_PAYLOAD" EXIT
+
+            echo "$JSON_PAYLOAD" > "$TEMP_PAYLOAD"
+
+            # Upload to Dependency-Track
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
+              "${{ parameters.dependencyTrackApiUrl }}/v1/bom" \
+              -H "Content-Type: application/json" \
+              -H "X-Api-Key: ${{ parameters.dependencyTrackApiKey }}" \
+              -d "@$TEMP_PAYLOAD")
+
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+            BODY=$(echo "$RESPONSE" | sed '$d')
+
+            echo "Response: $BODY"
+            echo "HTTP Status: $HTTP_CODE"
+
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "##vso[task.complete result=Succeeded;]SBOM uploaded successfully to Dependency-Track"
+            else
+              echo "##vso[task.logissue type=error]Failed to upload SBOM to Dependency-Track. HTTP Status: $HTTP_CODE"
+              exit 1
+            fi
+

@@ -1,0 +1,91 @@
+parameters:
+  - name: jobName
+    type: string
+  - name: dependsOn
+    type: object
+    default: []
+  - name: displayName
+    type: string
+    default: 'Audit'
+  - name: workingDirectory
+    type: string
+    default: '.'
+  - name: severity
+    type: string
+    default: 'CRITICAL,HIGH'
+  - name: failOnVulnerabilities
+    type: boolean
+    default: true
+  - name: exitCode
+    type: number
+    default: 0
+  - name: useBuildArtifacts
+    type: boolean
+    default: false
+  - name: artifactName
+    type: string
+    default: 'drop'
+  - name: scanType
+    type: string
+    default: 'fs'
+    values:
+      - fs
+      - config
+  - name: trivyVersion
+    type: string
+    default: '0.71.2'
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: '${{ parameters.displayName }}'
+    dependsOn: ${{ parameters.dependsOn }}
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+      - ${{ if parameters.useBuildArtifacts }}:
+        - checkout: none
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Build Output'
+          inputs:
+            artifactName: '${{ parameters.artifactName }}'
+            targetPath: '$(Build.SourcesDirectory)'
+
+      - task: Bash@3
+        displayName: 'Install Trivy'
+        inputs:
+          targetType: 'inline'
+          script: |
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v${{ parameters.trivyVersion }}
+            wget https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/junit.tpl
+
+      - task: Bash@3
+        displayName: 'Trivy Scan'
+        inputs:
+          targetType: 'inline'
+          script: |
+            SCAN_PATH="$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}"
+            echo "Scanning: $SCAN_PATH"
+
+            # Run scan with console output
+            trivy ${{ parameters.scanType }} \
+              --severity ${{ parameters.severity }} \
+              "$SCAN_PATH"
+
+            # Run scan with JUnit output for test results
+            trivy ${{ parameters.scanType }} \
+              --severity ${{ parameters.severity }} \
+              --exit-code ${{ parameters.exitCode }} \
+              --format template \
+              --template "@junit.tpl" \
+              -o $(Build.ArtifactStagingDirectory)/trivy-report-${{ parameters.jobName }}.xml \
+              "$SCAN_PATH"
+
+      - task: PublishTestResults@2
+        condition: succeededOrFailed()
+        displayName: 'Publish Vulnerability Report'
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '$(Build.ArtifactStagingDirectory)/trivy-report-${{ parameters.jobName }}.xml'
+          mergeTestResults: true
+          failTaskOnFailedTests: ${{ parameters.failOnVulnerabilities }}
+          testRunTitle: 'Security Vulnerabilities - ${{ parameters.jobName }}'

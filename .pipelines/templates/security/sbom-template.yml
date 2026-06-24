@@ -1,0 +1,91 @@
+parameters:
+  - name: jobName
+    type: string
+  - name: displayName
+    type: string
+    default: 'SBOM Generation'
+  - name: dependsOn
+    type: object
+    default: []
+  - name: workingDirectory
+    type: string
+    default: '.'
+  - name: outputFormat
+    type: string
+    default: 'cyclonedx-json'
+  - name: outputFilename
+    type: string
+    default: 'sbom.cyclonedx.json'
+  - name: sourceVersion
+    type: string
+    default: '$(Build.BuildNumber)'
+  - name: sourceName
+    type: string
+  - name: useBuildArtifacts
+    type: boolean
+    default: true
+  - name: artifactName
+    type: string
+    default: 'function-app-build'
+    displayName: 'Name of the build artifact to scan'
+  - name: sbomArtifactName
+    type: string
+    default: 'SBOM'
+    displayName: 'Name of the SBOM artifact to publish'
+
+jobs:
+  - job: ${{ parameters.jobName }}
+    displayName: '${{ parameters.displayName }}'
+    dependsOn: ${{ parameters.dependsOn }}
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+      - ${{ if parameters.useBuildArtifacts }}:
+        - checkout: none
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Build Output'
+          inputs:
+            artifactName: '${{ parameters.artifactName }}'
+            targetPath: '$(Build.SourcesDirectory)'
+        - task: Bash@3
+          displayName: 'Extract Build Artifact'
+          inputs:
+            targetType: 'inline'
+            script: |
+              cd "$(Build.SourcesDirectory)"
+              find . -name "*.zip" -type f | while read zipfile; do
+                echo "Extracting: $zipfile"
+                unzip -q "$zipfile" -d "$(dirname "$zipfile")"
+              done
+
+      - task: Bash@3
+        displayName: 'Install Syft'
+        inputs:
+          targetType: 'inline'
+          script: |
+            curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+      - task: Bash@3
+        displayName: 'Generate SBOM'
+        inputs:
+          targetType: 'inline'
+          script: |
+            SCAN_PATH="$(System.DefaultWorkingDirectory)/${{ parameters.workingDirectory }}"
+            echo "Generating SBOM for: $SCAN_PATH"
+            echo "Source Name: ${{ parameters.sourceName }}"
+            echo "Source Version: ${{ parameters.sourceVersion }}"
+
+            syft "$SCAN_PATH" \
+              --enrich all \
+              --source-version "${{ parameters.sourceVersion }}" \
+              --source-name "${{ parameters.sourceName }}" \
+              --output ${{ parameters.outputFormat }}=$(Build.ArtifactStagingDirectory)/${{ parameters.outputFilename }}
+
+            echo "SBOM generated successfully."
+
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish SBOM Artifact'
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+          artifactName: '${{ parameters.sbomArtifactName }}'
+          publishLocation: 'pipeline'
