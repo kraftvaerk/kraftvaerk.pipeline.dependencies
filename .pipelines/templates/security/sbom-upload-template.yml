@@ -46,6 +46,8 @@ jobs:
 
       - task: Bash@3
         displayName: 'Upload SBOM to Dependency-Track'
+        env:
+          DT_API_KEY: ${{ parameters.dependencyTrackApiKey }}
         inputs:
           targetType: 'inline'
           script: |
@@ -98,7 +100,7 @@ jobs:
             RESPONSE=$(curl -s -w "\n%{http_code}" -X PUT \
               "${{ parameters.dependencyTrackApiUrl }}/v1/bom" \
               -H "Content-Type: application/json" \
-              -H "X-Api-Key: ${{ parameters.dependencyTrackApiKey }}" \
+              -H "X-Api-Key: $DT_API_KEY" \
               -d "@$TEMP_PAYLOAD")
 
             HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
