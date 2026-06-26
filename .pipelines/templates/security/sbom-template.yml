@@ -10,9 +10,12 @@ parameters:
   - name: workingDirectory
     type: string
     default: '.'
+    # https://oss.anchore.com/docs/guides/sbom/formats/#format-versions
+    # Note that the CycloneDX JSON format version needs to be supported by DependencyTrack as well.
+    # As of 2026-06-26, the latest version supported is 1.6, so we will use that as the default.
   - name: outputFormat
     type: string
-    default: 'cyclonedx-json'
+    default: 'cyclonedx-json@1.6'
   - name: outputFilename
     type: string
     default: 'sbom.cyclonedx.json'
