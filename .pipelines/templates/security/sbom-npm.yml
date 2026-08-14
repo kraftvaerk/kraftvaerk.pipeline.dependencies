@@ -1,0 +1,71 @@
+parameters:
+- name: nodeVersion
+  type: string
+  default: '20.x'
+  displayName: 'Version of Node.js to install'
+
+- name: targetPath
+  type: string
+  default: '$(Build.SourcesDirectory)'
+  displayName: 'Path to the npm project to scan (directory containing package.json, or the manifest file itself)'
+
+- name: cyclonedxNpmVersion
+  type: string
+  default: '6.0.1'
+  displayName: 'Version of @cyclonedx/cyclonedx-npm to install'
+
+- name: outputArtifactName
+  type: string
+  default: 'SBOM'
+  displayName: 'Name of the SBOM artifact to publish'
+
+- name: cycloneDxSpecVersion
+  type: string
+  default: '1.6'
+  displayName: 'Version of CycloneDX specification to use for the SBOM'
+
+- name: packageLockOnly
+  type: boolean
+  default: false
+  displayName: 'Whether to only use the lock file, ignoring node_modules'
+
+
+jobs:
+  - job: sbom-npm
+    displayName: 'Generate SBOM for npm'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+      - task: NodeTool@0
+        displayName: 'Install Node.js'
+        inputs:
+          versionSpec: ${{ parameters.nodeVersion }}
+
+      - task: PowerShell@2
+        displayName: 'Generate SBOM'
+        inputs:
+          pwsh: true
+          targetType: 'inline'
+          script: |
+            $commandArgs = @(
+                "npx", "--yes", "@cyclonedx/cyclonedx-npm@${{ parameters.cyclonedxNpmVersion }}",
+                "--output-file", "$(Build.ArtifactStagingDirectory)/sbom.cdx.json",
+                "--output-format", "JSON",
+                "--spec-version", "${{ parameters.cycloneDxSpecVersion }}"
+            )
+
+            if ($${{ parameters.packageLockOnly }}) {
+                $commandArgs += "--package-lock-only"
+            }
+
+            $commandArgs += "${{ parameters.targetPath }}"
+
+            Write-Host "Running command with arguments: $commandArgs"
+
+            & $commandArgs
+
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish SBOM Artifact'
+        inputs:
+          targetPath: "$(Build.ArtifactStagingDirectory)/sbom.cdx.json"
+          artifactName: ${{ parameters.outputArtifactName }}
