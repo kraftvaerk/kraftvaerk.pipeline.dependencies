@@ -46,12 +46,6 @@ steps:
       version: ${{ parameters.dotnetVersion }}
       installationPath: $(Agent.ToolsDirectory)/dotnet
 
-  - task: DotNetCoreCLI@2
-    displayName: 'Restore .NET Dependencies'
-    inputs:
-      command: 'restore'
-      projects: ${{ parameters.targetPath }}
-  
   - task: PowerShell@2
     displayName: Install Cyclonedx-dotnet
     inputs:
