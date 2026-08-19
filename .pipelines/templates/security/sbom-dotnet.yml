@@ -78,7 +78,7 @@ steps:
 
         if ("${{ parameters.componentVersion }}" -ne "") {
             $commandArgs += "--set-version"
-            $commandArgs += "'${{ parameters.componentVersion }}'"
+            $commandArgs += "${{ parameters.componentVersion }}"
         }
 
         if ("${{ parameters.componentName }}" -ne "") {
