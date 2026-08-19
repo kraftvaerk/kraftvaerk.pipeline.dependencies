@@ -38,70 +38,64 @@ parameters:
   default: ''
   displayName: 'Path to a JSON file containing metadata to include in the SBOM'
 
+steps:
+  - task: UseDotNet@2
+    displayName: 'Install .NET SDK'
+    inputs:
+      packageType: 'sdk'
+      version: ${{ parameters.dotnetVersion }}
+      installationPath: $(Agent.ToolsDirectory)/dotnet
 
-jobs:
-  - job: sbom-dotnet
-    displayName: 'Generate SBOM for .NET'
-    pool:
-      vmImage: 'ubuntu-latest'
-    steps:
-      - task: UseDotNet@2
-        displayName: 'Install .NET SDK'
-        inputs:
-          packageType: 'sdk'
-          version: ${{ parameters.dotnetVersion }}
-          installationPath: $(Agent.ToolsDirectory)/dotnet
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore .NET Dependencies'
+    inputs:
+      command: 'restore'
+      projects: ${{ parameters.targetPath }}
+  
+  - task: PowerShell@2
+    displayName: Install Cyclonedx-dotnet
+    inputs:
+      pwsh: true
+      targetType: 'inline'
+      script: |
+        dotnet tool install --global CycloneDX.Tool --version ${{ parameters.cyclonedxVersion }}
 
-      - task: DotNetCoreCLI@2
-        displayName: 'Restore .NET Dependencies'
-        inputs:
-          command: 'restore'
-          projects: ${{ parameters.targetPath }}
-      
-      - task: PowerShell@2
-        displayName: Install Cyclonedx-dotnet
-        inputs:
-          pwsh: true
-          targetType: 'inline'
-          script: |
-            dotnet tool install --global CycloneDX.Tool --version ${{ parameters.cyclonedxVersion }}
+  - task: PowerShell@2
+    displayName: 'Generate SBOM'
+    inputs:
+      pwsh: true
+      targetType: 'inline'
+      script: |
+        $commandArgs = @(
+            "dotnet-cyclonedx",
+            "-o", "$(Build.ArtifactStagingDirectory)",
+            "-f", "sbom.cdx.json",
+            "--output-format", "json",
+            "-p", "${{ parameters.targetPath }}",
+            "--spec-version", "${{ parameters.cycloneDxSpecVersion }}"
+        )
 
-      - task: PowerShell@2
-        displayName: 'Generate SBOM'
-        inputs:
-          pwsh: true
-          targetType: 'inline'
-          script: |
-            $commandArgs = @(
-                "dotnet-cyclonedx",
-                "-o", "$(Build.ArtifactStagingDirectory)",
-                "-f", "sbom.cdx.json",
-                "--output-format", "json",
-                "-p", "${{ parameters.targetPath }}",
-                "--spec-version", "${{ parameters.cycloneDxSpecVersion }}"
-            )
+        if (${{ parameters.componentVersion }} -ne "") {
+            $commandArgs += "--set-version"
+            $commandArgs += "${{ parameters.componentVersion }}"
+        }
 
-            if (${{ parameters.componentVersion }} -ne "") {
-                $commandArgs += "--set-version"
-                $commandArgs += "${{ parameters.componentVersion }}"
-            }
+        if (${{ parameters.componentName }} -ne "") {
+            $commandArgs += "--set-name"
+            $commandArgs += "${{ parameters.componentName }}"
+        }
 
-            if (${{ parameters.componentName }} -ne "") {
-                $commandArgs += "--set-name"
-                $commandArgs += "${{ parameters.componentName }}"
-            }
+        if (${{ parameters.metadataPath }} -ne "") {
+            $commandArgs += "--import-metadata-path"
+            $commandArgs += "${{ parameters.metadataPath }}"
+        }
 
-            if (${{ parameters.metadataPath }} -ne "") {
-                $commandArgs += "--import-metadata-path"
-                $commandArgs += "${{ parameters.metadataPath }}"
-            }
+        Write-Host "Running command with arguments: $commandArgs"
 
-            Write-Host "Running command with arguments: $commandArgs"
+        & $commandArgs
 
-            & $commandArgs
-
-      - task: PublishPipelineArtifact@1
-        displayName: 'Publish SBOM Artifact'
-        inputs:
-          targetPath: "$(Build.ArtifactStagingDirectory)/sbom.cdx.json"
-          artifactName: ${{ parameters.outputArtifactName }}
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish SBOM Artifact'
+    inputs:
+      targetPath: "$(Build.ArtifactStagingDirectory)/sbom.cdx.json"
+      artifactName: ${{ parameters.outputArtifactName }}
