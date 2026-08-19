@@ -65,8 +65,8 @@ steps:
         $cycloneDx = Join-Path $toolPath "dotnet-CycloneDX.exe"
         $commandArgs = @(
             "${{ parameters.targetPath }}",
-            "-o", "$(Build.ArtifactStagingDirectory)",
-            "-f", "sbom.cdx.json",
+            "--output", "$(Build.ArtifactStagingDirectory)",
+            "--filename", "sbom.cdx.json",
             "--output-format", "json",
             "--spec-version", "${{ parameters.cycloneDxSpecVersion }}"
         )
