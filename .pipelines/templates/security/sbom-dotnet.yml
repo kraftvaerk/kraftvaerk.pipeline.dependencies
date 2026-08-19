@@ -58,7 +58,7 @@ steps:
       pwsh: true
       targetType: 'inline'
       script: |
-        dotnet tool install --global CycloneDX.Tool --version ${{ parameters.cyclonedxVersion }}
+        dotnet tool install --global CycloneDX --version ${{ parameters.cyclonedxVersion }}
 
   - task: PowerShell@2
     displayName: 'Generate SBOM'
