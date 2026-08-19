@@ -38,6 +38,11 @@ parameters:
   default: ''
   displayName: 'Path to a JSON file containing metadata to include in the SBOM'
 
+- name: disablePackageRestore
+  type: boolean
+  default: false
+  displayName: 'Whether to disable package restore before generating the SBOM'
+
 steps:
   - task: UseDotNet@2
     displayName: 'Install .NET SDK'
@@ -61,7 +66,7 @@ steps:
       pwsh: true
       targetType: 'inline'
       script: |
-        $toolPath = "$(Agent.TempDirectory)\cyclonedx"
+        $toolPath = "$(Agent.TempDirectory)/cyclonedx"
         $cycloneDx = Join-Path $toolPath "dotnet-CycloneDX.exe"
         $commandArgs = @(
             "${{ parameters.targetPath }}",
@@ -78,12 +83,16 @@ steps:
 
         if ("${{ parameters.componentName }}" -ne "") {
             $commandArgs += "--set-name"
-            $commandArgs += "'${{ parameters.componentName }}'"
+            $commandArgs += "${{ parameters.componentName }}"
         }
 
         if ("${{ parameters.metadataPath }}" -ne "") {
             $commandArgs += "--import-metadata-path"
-            $commandArgs += "'${{ parameters.metadataPath }}'"
+            $commandArgs += "${{ parameters.metadataPath }}"
+        }
+
+        if ($${{ parameters.disablePackageRestore }}) {
+            $commandArgs += "--disable-package-restore"
         }
 
         Write-Host "Running: $cycloneDx $commandArgs"
