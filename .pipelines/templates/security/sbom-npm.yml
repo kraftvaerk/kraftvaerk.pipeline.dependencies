@@ -26,7 +26,7 @@ parameters:
 
 - name: packageLockOnly
   type: boolean
-  default: false
+  default: true
   displayName: 'Whether to only use the lock file, ignoring node_modules'
 
 
