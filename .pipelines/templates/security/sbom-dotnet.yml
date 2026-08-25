@@ -57,8 +57,7 @@ steps:
       pwsh: true
       targetType: 'inline'
       script: |
-        $toolPath = "$(Agent.TempDirectory)/cyclonedx"
-        dotnet tool install --tool-path $toolPath CycloneDX --version ${{ parameters.cyclonedxVersion }}
+        dotnet tool install --global CycloneDX --version ${{ parameters.cyclonedxVersion }}
 
   - task: PowerShell@2
     displayName: 'Generate SBOM'
@@ -66,8 +65,8 @@ steps:
       pwsh: true
       targetType: 'inline'
       script: |
-        $toolPath = "$(Agent.TempDirectory)/cyclonedx"
-        $cycloneDx = Join-Path $toolPath "dotnet-CycloneDX.exe"
+        $dotnetToolPath = Join-Path $HOME '.dotnet/tools'
+        $env:PATH = "$dotnetToolPath$([IO.Path]::PathSeparator)$env:PATH"
         $commandArgs = @(
             "${{ parameters.targetPath }}",
             "--output", "$(Build.ArtifactStagingDirectory)",
@@ -95,8 +94,8 @@ steps:
             $commandArgs += "--disable-package-restore"
         }
 
-        Write-Host "Running: $cycloneDx $commandArgs"
-        & $cycloneDx @commandArgs
+        Write-Host "Running: dotnet-CycloneDX $commandArgs"
+        dotnet-CycloneDX @commandArgs
 
   - task: PublishPipelineArtifact@1
     displayName: 'Publish SBOM Artifact'
